@@ -177,7 +177,7 @@ class PeerAssessmentMixin(object):
                 )
             else:
                 context_dict["submit_button_text"] = (
-                    "Submit your assessment & move to response #{}"
+                    _("Submit your assessment & move to response #{}")
                 ).format(count + 2)
 
         # Once a student has completed a problem, it stays complete,
