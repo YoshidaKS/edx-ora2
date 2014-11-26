@@ -5,6 +5,7 @@ import logging
 from itertools import izip_longest
 from unicodedata import east_asian_width
 import unicodecsv as csv
+from optparse import make_option
 
 from django.core.management.base import BaseCommand, CommandError
 from django.utils.timezone import UTC
@@ -31,6 +32,13 @@ class Command(BaseCommand):
         course_id (unicode): The ID of the course to the openassessment item exists in, e.g. edX/Open_DemoX/edx_demo_course
     """
     help = """Usage: dump_oa_scores <course_id>"""
+    option_list = BaseCommand.option_list + (
+        make_option('-f', '--filepath',
+                    action="store_true",
+                    dest='filepath',
+                    default=False,
+                    help='Dump data with Uploaded file filepath'),
+    )
 
     def handle(self, *args, **options):
         if len(args) != 1:
@@ -86,7 +94,10 @@ class Command(BaseCommand):
         # Get submissions from course_id and item_id
         submissions = get_submissions(course_id, item_id)
 
-        header = ['Title', 'User name', 'Submission content', 'Submission created at', 'Status', 'Points earned', 'Points possible', 'Score created at', 'Grade count', 'Being graded count', 'Scored count']
+        if options['filepath']: 
+          header = ['Title', 'User name', 'Submission content', 'Filepath', 'Submission created at', 'Status', 'Points earned', 'Points possible', 'Score created at', 'Grade count', 'Being graded count', 'Scored count']
+        else:
+          header = ['Title', 'User name', 'Submission content', 'Submission created at', 'Status', 'Points earned', 'Points possible', 'Score created at', 'Grade count', 'Being graded count', 'Scored count']
         header_extra = []
         rows = []
 
@@ -101,6 +112,10 @@ class Command(BaseCommand):
             # 'Submission Content'
             raw_answer = Submission.objects.get(uuid=submission.submission_uuid).raw_answer
             row.append(json.loads(raw_answer)['text'].replace('\n', '[\\n]'))
+            # 'Filepath'
+            if options['filepath']: 
+              filepath = submission.student_id + "/" + org + "/" + course + "/" + name + "/" + item_id.replace("i4x:/", "i4x%3A")
+              row.append(filepath)
             # 'Submission created at'
             row.append(submission.created_at)
             # 'Status'
