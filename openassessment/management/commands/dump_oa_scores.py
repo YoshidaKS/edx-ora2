@@ -6,9 +6,14 @@ from itertools import izip_longest
 from unicodedata import east_asian_width
 import unicodecsv as csv
 from optparse import make_option
+from boto import connect_s3
+from boto.s3.key import Key
+import tarfile
+import os
 
 from django.core.management.base import BaseCommand, CommandError
 from django.utils.timezone import UTC
+from django.conf import settings
 
 from xmodule.modulestore import Location
 from xmodule.modulestore.django import modulestore
@@ -33,11 +38,11 @@ class Command(BaseCommand):
     """
     help = """Usage: dump_oa_scores <course_id>"""
     option_list = BaseCommand.option_list + (
-        make_option('-f', '--filepath',
+        make_option('-u', '--uploads',
                     action="store_true",
                     dest='filepath',
                     default=False,
-                    help='Dump data with Uploaded file filepath'),
+                    help='Dump data with Uploaded file'),
     )
 
     def handle(self, *args, **options):
@@ -95,9 +100,12 @@ class Command(BaseCommand):
         submissions = get_submissions(course_id, item_id)
 
         if options['filepath']: 
-          header = ['Title', 'User name', 'Submission content', 'Filepath', 'Submission created at', 'Status', 'Points earned', 'Points possible', 'Score created at', 'Grade count', 'Being graded count', 'Scored count']
+            tmp_uploadfile = '/tmp/uploadfile/'
+            if not os.path.exists(tmp_uploadfile):
+                os.makedirs(tmp_uploadfile)
+            header = ['Title', 'User name', 'Submission content', 'Filepath', 'Submission created at', 'Status', 'Points earned', 'Points possible', 'Score created at', 'Grade count', 'Being graded count', 'Scored count']
         else:
-          header = ['Title', 'User name', 'Submission content', 'Submission created at', 'Status', 'Points earned', 'Points possible', 'Score created at', 'Grade count', 'Being graded count', 'Scored count']
+            header = ['Title', 'User name', 'Submission content', 'Submission created at', 'Status', 'Points earned', 'Points possible', 'Score created at', 'Grade count', 'Being graded count', 'Scored count']
         header_extra = []
         rows = []
 
@@ -114,7 +122,7 @@ class Command(BaseCommand):
             row.append(json.loads(raw_answer)['text'].replace('\n', '[\\n]'))
             # 'Filepath'
             if options['filepath']: 
-              filepath = submission.student_id + "/" + org + "/" + course + "/" + name + "/" + item_id.replace("i4x:/", "i4x%3A")
+              filepath = submission.student_id + "/" + org + "/" + course + "/" + name + "/" + item_id.replace("i4x://", "i4x:/")
               row.append(filepath)
             # 'Submission created at'
             row.append(submission.created_at)
@@ -158,12 +166,33 @@ class Command(BaseCommand):
                     row.append(','.join(map(str, score[1])))
             else:
                 pass
+            
+            if options['filepath']:
+                conn = connect_s3(settings.AWS_ACCESS_KEY_ID, settings.AWS_SECRET_ACCESS_KEY)
+                bucket = conn.get_bucket(settings.FILE_UPLOAD_STORAGE_BUCKET_NAME)
+                file_key = settings.FILE_UPLOAD_STORAGE_PREFIX + '/' + filepath
+                try:
+                    key = bucket.get_key(file_key)
+                except:
+                    print ('nofile in s3 {}').format(file_key)
+                temp_path = '/tmp/uploadfile/' + user.username 
+                try:
+                    key.get_contents_to_filename(temp_path)
+                except:
+                    print ('could not download from S3: {}').format(file_key)
 
             rows.append(row)
-
+            
         header.extend(sorted(set(header_extra), key=header_extra.index))
         write_csv('oa_scores-%s-#%d.csv' % (course_id.replace('/', '.'), selected_oa_item), header, rows)
-
+        if options['filepath']:
+            tarfile_filename = course_id.replace('/', '.') + '-' + str(selected_oa_item)
+            tar = tarfile.open('/tmp/' + tarfile_filename + '.tar.gz', 'w:gz')
+            tar.add(tmp_uploadfile, arcname=tarfile_filename)
+            tar.close()
+            key = Key(bucket)
+            key.key = 'dump/' + tarfile_filename + '.tar.gz'
+            key.set_contents_from_filename('/tmp/' + tarfile_filename + '.tar.gz')
 
 def write_csv(output_filename, header, rows):
     try:
