@@ -62,12 +62,12 @@ class Command(BaseCommand):
         org = course_dict['org']
         course = course_dict['course']
         name = course_dict['name']
-        course_items = modulestore().get_items(Location(tag, org, course, 'course', name))
+        course_items = modulestore().get_items(Location(tag, org, course, 'course', name),course_id)
         if not course_items:
             raise CommandError("No such course was found.")
 
         # Find openassessment items
-        oa_items = modulestore().get_items(Location(tag, org, course, 'openassessment'))
+        oa_items = modulestore().get_items(Location(tag, org, course, 'openassessment'),course_id)
         if not oa_items:
             raise CommandError("No openassessment item was found.")
         oa_items = sorted(oa_items, key=lambda item:item.start or datetime(2030, 1, 1, tzinfo=UTC()))
